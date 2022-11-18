@@ -1,0 +1,130 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: wordpress-fpm
+  namespace: example
+  labels:
+    app: wordpress-fpm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress-fpm
+  template:
+    metadata:
+      labels:
+        app: wordpress-fpm
+    spec:
+      #nodeSelector:
+      #  kubernetes.io/hostname: cameo
+      containers:
+        - name: wordpress-fpm
+          image: wordpress:fpm
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9000
+              name: wordpress-fpm
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              value: exampledb
+            - name: WORDPRESS_DB_USER
+              value: exampleuser
+            - name: WORDPRESS_DB_PASSWORD
+              value: examplepass
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: wordpress-fpm
+  namespace: example
+  labels:
+    app: wordpress-fpm
+spec:
+  selector:
+    app: wordpress-fpm
+  type: ClusterIP
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: wordpress-fpm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: php-config-map
+  namespace: example
+data:
+  CONTENT_LENGTH: $content_length
+  CONTENT_TYPE: $content_type
+  DOCUMENT_ROOT: $document_root
+  DOCUMENT_URI: $document_uri
+  GEO_ASN: $geoip2_asn
+  GEO_CITY: $geoip2_city
+  GEO_COUNTRY_CODE: $geoip2_city_country_code
+  GEO_COUNTRY_NAME: $geoip2_city_country_name
+  GEO_DMA_CODE: $geoip2_dma_code
+  GEO_LATITUDE: $geoip2_latitude
+  GEO_LONGITUDE: $geoip2_longitude
+  GEO_ORG: $geoip2_org
+  GEO_POSTAL_CODE: $geoip2_postal_code
+  GEO_REGION_CODE: $geoip2_region_code
+  GEO_REGION_NAME: $geoip2_region_name
+  GEO_SUBREGION_CODE: $geoip2_subregion_code
+  GEO_SUBREGION_NAME: $geoip2_subregion_name
+  GEO_TIMEZONE: $geoip2_time_zone
+  HTTPS: $https
+  HTTP_X_FORWARDED_FOR: $remote_addr
+  HTTP_X_FORWARDED_HOST: $best_http_host
+  HTTP_X_FORWARDED_PORT: $pass_port
+  HTTP_X_FORWARDED_PROTO: $pass_access_scheme
+  HTTP_X_FORWARDED_SCHEME: $pass_access_scheme
+  HTTP_X_ORIGINAL_FORWARDED_FOR: $http_x_forwarded_for
+  HTTP_X_REAL_IP: $remote_addr
+  HTTP_X_REQUEST_ID: $req_id
+  HTTP_X_SCHEME: $pass_access_scheme
+  QUERY_STRING: $query_string
+  REDIRECT_STATUS: '200'
+  REMOTE_ADDR: $remote_addr
+  REMOTE_PORT: $remote_port
+  REQUEST_METHOD: $request_method
+  REQUEST_SCHEME: $scheme
+  REQUEST_URI: $request_uri
+  SCRIPT_FILENAME: /var/www/html/index.php
+  SCRIPT_NAME: $fastcgi_script_name
+  SERVER_ADDR: $server_addr
+  SERVER_NAME: $server_name
+  SERVER_PORT: $server_port
+  SERVER_PROTOCOL: $server_protocol
+  SERVER_SOFTWARE: nginx/$nginx_version
+---
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: wordpress-fpm
+  namespace: example
+  annotations:
+    acme.cert-manager.io/http01-ingress-class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/issue-temporary-certificate: 'true'
+    nginx.ingress.kubernetes.io/backend-protocol: FCGI
+    nginx.ingress.kubernetes.io/fastcgi-index: /app/src/index.php
+    nginx.ingress.kubernetes.io/fastcgi-params-configmap: example/php-config-map
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - wordpress-fpm.bottled.codes
+      secretName: wordpress-fpm-tls
+  rules:
+    - host: wordpress-fpm.bottled.codes
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress-fpm
+                port:
+                  number: 9000

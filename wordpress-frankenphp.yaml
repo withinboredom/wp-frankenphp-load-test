@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: example-certs
+  namespace: example
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: wordpress-frankenphp
+  namespace: example
+  labels:
+    app: wordpress-frankenphp
+spec:
+  selector:
+    matchLabels:
+      app: wordpress-frankenphp
+  #replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress-frankenphp
+    spec:
+      volumes:
+        - name: example-certs
+          persistentVolumeClaim:
+            claimName: example-certs
+      #nodeSelector:
+      #  kubernetes.io/hostname: cameo
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: wordpress-frankenphp
+          image: registry.bottled.codes/withinboredom/frankenphp-wordpress:latest-worker-19
+          ports:
+            - containerPort: 80
+              name: wordpress
+          volumeMounts:
+            - mountPath: /root/.local/share/caddy
+              name: example-certs
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              value: exampledb
+            - name: WORDPRESS_DB_USER
+              value: exampleuser
+            - name: WORDPRESS_DB_PASSWORD
+              value: examplepass
+            - name: SERVER_NAME
+              value: ":80"
+            - name: GOGC
+              value: "off"
+            - name: GOMEMLIMIT
+              value: "4096"
+            #- name: GOMAXPROCS
+            #  value: "24"
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: wordpress-frankenphp
+  namespace: example
+  labels:
+    app: wordpress-frankenphp
+spec:
+    type: ClusterIP
+    selector:
+        app: wordpress-frankenphp
+    ports:
+        - name: wordpress
+          port: 80
+          targetPort: 80
+          protocol: TCP
+        - name: wordpress-ssl
+          port: 443
+          targetPort: 443
+          protocol: TCP
+        - name: wordpress-http3
+          port: 443
+          targetPort: 443
+          protocol: UDP
+---
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: wordpress-frankenphp
+  namespace: example
+  annotations:
+    acme.cert-manager.io/http01-ingress-class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/issue-temporary-certificate: 'true'
+    certmanager.k8s.io/cluster-issuer: letsencrypt
+    certmanager.k8s.io/http01-ingress-class: nginx
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - wordpress-frankenphp.bottled.codes
+      secretName: wordpress-frankenphp-tls
+  rules:
+    - host: wordpress-frankenphp.bottled.codes
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress-frankenphp
+                port:
+                  number: 80

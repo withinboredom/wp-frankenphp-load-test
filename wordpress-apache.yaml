@@ -1,0 +1,80 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: wordpress-apache
+  namespace: example
+  labels:
+    app: wordpress-apache
+spec:
+  selector:
+    matchLabels:
+      app: wordpress-apache
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: wordpress-apache
+    spec:
+      #nodeSelector:
+      #  kubernetes.io/hostname: cameo
+      containers:
+        - name: wordpress-apache
+          image: wordpress:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: wordpress
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mysql
+            - name: WORDPRESS_DB_NAME
+              value: exampledb
+            - name: WORDPRESS_DB_USER
+              value: exampleuser
+            - name: WORDPRESS_DB_PASSWORD
+              value: examplepass
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: wordpress-apache
+  namespace: example
+  labels:
+    app: wordpress-apache
+spec:
+  type: ClusterIP
+  selector:
+    app: wordpress-apache
+  ports:
+    - name: wordpress
+      port: 80
+      targetPort: 80
+---
+kind: Ingress
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: wordpress-apache
+  namespace: example
+  annotations:
+    acme.cert-manager.io/http01-ingress-class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/issue-temporary-certificate: 'true'
+    certmanager.k8s.io/cluster-issuer: letsencrypt
+    certmanager.k8s.io/http01-ingress-class: nginx
+spec:
+  ingressClassName: nginx
+  tls:
+    - secretName: wordpress-apache-tls
+      hosts:
+        - wordpress-apache.bottled.codes
+  rules:
+    - host: wordpress-apache.bottled.codes
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wordpress-apache
+                port:
+                  number: 80
